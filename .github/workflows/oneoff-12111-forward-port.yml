@@ -1,0 +1,79 @@
+name: One-off CityPlus 1.21.11 forward port
+
+on:
+  push:
+    branches:
+      - forward-port-1.21.11
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout build branch
+        uses: actions/checkout@v4
+
+      - name: Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.1'
+
+      - name: Recover port source bundle
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir work
+          curl --fail --silent --show-error \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/git/blobs/38bc83542508c4796ff956a7cee53fc487d4deab" \
+            | jq -r '.content' | tr -d '\n' | base64 -d > /tmp/cityplus.tar.xz
+          tar -xJf /tmp/cityplus.tar.xz -C work
+          test -f work/build.gradle
+          test -f work/src/main/resources/fabric.mod.json
+
+      - name: Build and capture log
+        id: build
+        shell: bash
+        run: |
+          set +e
+          cd work
+          gradle build --stacktrace --no-daemon 2>&1 | tee ../forward-port-build.log
+          rc=${PIPESTATUS[0]}
+          echo "exit_code=$rc" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Collect diagnostics and JARs
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p artifact
+          cp forward-port-build.log artifact/ || true
+          cp work/gradle.properties artifact/ || true
+          cp work/build.gradle artifact/ || true
+          cp work/src/main/resources/fabric.mod.json artifact/fabric.mod.json.source || true
+          cp -r work/build/libs artifact/libs 2>/dev/null || true
+          find work/build -maxdepth 5 -type f | sort > artifact/build-files.txt 2>/dev/null || true
+          echo "${{ steps.build.outputs.exit_code }}" > artifact/build-exit-code.txt
+
+      - name: Upload build result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cityplus-1.21.11-forward-port
+          path: artifact
+          if-no-files-found: error
+
+      - name: Fail if compilation failed
+        if: steps.build.outputs.exit_code != '0'
+        run: exit 1
