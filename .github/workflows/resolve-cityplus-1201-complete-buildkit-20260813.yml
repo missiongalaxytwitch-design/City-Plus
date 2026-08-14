@@ -1,0 +1,77 @@
+name: Resolve Complete CityPlus 1.20.1 Buildkit 20260813
+
+on:
+  push:
+    paths:
+      - '.github/workflows/resolve-cityplus-1201-complete-buildkit-20260813.yml'
+  workflow_dispatch:
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.1.1'
+      - name: Create exact Minecraft 1.20.1 probe
+        run: |
+          mkdir -p probe/src/main/java/dev/riley/probe probe/src/main/resources
+          cat > probe/settings.gradle <<'EOF'
+          pluginManagement {
+              repositories {
+                  maven { url = 'https://maven.fabricmc.net/' }
+                  gradlePluginPortal()
+                  mavenCentral()
+              }
+          }
+          rootProject.name = 'cityplus-1201-complete-probe'
+          EOF
+          cat > probe/gradle.properties <<'EOF'
+          org.gradle.jvmargs=-Xmx6G
+          org.gradle.daemon=false
+          org.gradle.configuration-cache=false
+          EOF
+          cat > probe/build.gradle <<'EOF'
+          plugins { id 'fabric-loom' version '1.2.1' }
+          repositories { mavenCentral() }
+          dependencies {
+              minecraft 'com.mojang:minecraft:1.20.1'
+              mappings loom.officialMojangMappings()
+              modImplementation 'net.fabricmc:fabric-loader:0.18.4'
+              modImplementation 'net.fabricmc.fabric-api:fabric-api:0.92.8+1.20.1'
+          }
+          tasks.withType(JavaCompile).configureEach { it.options.release = 17 }
+          java { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
+          EOF
+          cat > probe/src/main/java/dev/riley/probe/Probe.java <<'EOF'
+          package dev.riley.probe;
+          import net.minecraft.core.BlockPos;
+          import net.minecraft.world.level.block.Blocks;
+          public final class Probe { public static BlockPos origin(){ return BlockPos.ZERO; } public static String block(){ return Blocks.STONE.toString(); } }
+          EOF
+          cat > probe/src/main/resources/fabric.mod.json <<'EOF'
+          {"schemaVersion":1,"id":"cityplus_complete_probe","version":"1","environment":"client","entrypoints":{},"depends":{"fabricloader":">=0.18.4","minecraft":"1.20.1","java":">=17"}}
+          EOF
+      - name: Fully prepare and build Minecraft 1.20.1 workspace
+        working-directory: probe
+        run: gradle --no-daemon --stacktrace clean build
+      - name: Verify intermediary artifact is available
+        run: |
+          mkdir -p artifact/extra
+          curl -fL 'https://maven.fabricmc.net/net/fabricmc/intermediary/1.20.1/intermediary-1.20.1-v2.jar' -o artifact/extra/intermediary-1.20.1-v2.jar
+      - name: Bundle Gradle 8.1.1 and complete resolved caches
+        run: |
+          cp -R "$(dirname $(dirname $(readlink -f $(command -v gradle))))" artifact/gradle
+          cp -R "$HOME/.gradle/caches" artifact/caches
+          cp -R "$HOME/.gradle/wrapper" artifact/wrapper 2>/dev/null || true
+          find "$HOME/.gradle/caches/fabric-loom/1.20.1" -maxdepth 3 -type f | sort > artifact/loom-files.txt
+          gradle --version > artifact/gradle-version.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cityplus-1.20.1-complete-buildkit
+          path: artifact
+          retention-days: 7
