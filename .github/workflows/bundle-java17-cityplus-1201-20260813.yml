@@ -1,0 +1,26 @@
+name: Bundle Java 17 for CityPlus 1.20.1 20260813
+
+on:
+  push:
+    paths:
+      - '.github/workflows/bundle-java17-cityplus-1201-20260813.yml'
+  workflow_dispatch:
+
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Bundle Java home
+        run: |
+          mkdir -p artifact
+          cp -R "$JAVA_HOME" artifact/java17
+          "$JAVA_HOME/bin/java" -version
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cityplus-java17-build-runtime
+          path: artifact
+          retention-days: 7
