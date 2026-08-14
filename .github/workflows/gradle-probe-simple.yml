@@ -1,0 +1,16 @@
+name: Gradle probe simple
+on:
+  push:
+    branches: [forward-port-1.21.11]
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.1'
+      - run: gradle --version
