@@ -1,0 +1,23 @@
+name: Gradle bundle helper
+on:
+  push:
+    branches: [forward-port-1.21.11]
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.1'
+      - name: Bundle installed Gradle
+        run: |
+          mkdir -p artifact
+          cp -R "$(dirname $(dirname $(readlink -f $(command -v gradle))))" artifact/gradle
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gradle-home-bundle
+          path: artifact
