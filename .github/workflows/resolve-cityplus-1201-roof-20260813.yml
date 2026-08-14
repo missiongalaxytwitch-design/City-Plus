@@ -1,0 +1,73 @@
+name: Resolve CityPlus 1.20.1 Roof Build Cache 20260813
+
+on:
+  push:
+    paths:
+      - '.github/workflows/resolve-cityplus-1201-roof-20260813.yml'
+  workflow_dispatch:
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.1'
+      - name: Create exact 1.20.1 probe
+        run: |
+          mkdir -p probe/src/main/java/dev/riley/probe probe/src/main/resources
+          cat > probe/settings.gradle <<'EOF'
+          pluginManagement {
+              repositories {
+                  maven { url = 'https://maven.fabricmc.net/' }
+                  gradlePluginPortal()
+                  mavenCentral()
+              }
+          }
+          rootProject.name = 'cityplus-1201-cache-probe'
+          EOF
+          cat > probe/gradle.properties <<'EOF'
+          org.gradle.jvmargs=-Xmx2G
+          org.gradle.configuration-cache=false
+          minecraft_version=1.20.1
+          loader_version=0.18.4
+          loom_version=1.17-SNAPSHOT
+          fabric_api_version=0.92.8+1.20.1
+          EOF
+          cat > probe/build.gradle <<'EOF'
+          plugins {
+              id 'net.fabricmc.fabric-loom-remap' version "${loom_version}"
+          }
+          repositories { mavenCentral() }
+          dependencies {
+              minecraft "com.mojang:minecraft:${project.minecraft_version}"
+              mappings loom.officialMojangMappings()
+              modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+              modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+          }
+          tasks.withType(JavaCompile).configureEach { it.options.release = 17 }
+          java { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
+          EOF
+          cat > probe/src/main/java/dev/riley/probe/Probe.java <<'EOF'
+          package dev.riley.probe;
+          import net.minecraft.core.BlockPos;
+          public final class Probe { public static BlockPos origin(){ return BlockPos.ZERO; } }
+          EOF
+          cat > probe/src/main/resources/fabric.mod.json <<'EOF'
+          {"schemaVersion":1,"id":"cityplus_cache_probe","version":"1","environment":"client","entrypoints":{},"depends":{"fabricloader":">=0.18.4","minecraft":"1.20.1","java":">=17"}}
+          EOF
+      - name: Resolve Minecraft Fabric Loom toolchain
+        working-directory: probe
+        run: gradle --no-daemon --stacktrace classes
+      - name: Package resolved Gradle cache
+        run: |
+          tar -C "$HOME" -czf cityplus-1.20.1-gradle-cache.tgz .gradle/caches .gradle/wrapper 2>/dev/null || tar -C "$HOME" -czf cityplus-1.20.1-gradle-cache.tgz .gradle/caches
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cityplus-1.20.1-resolved-cache-roof
+          path: cityplus-1.20.1-gradle-cache.tgz
+          retention-days: 7
